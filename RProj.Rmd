@@ -1,0 +1,249 @@
+---
+title: "R Project for ST 501-601"
+author: "C. Seth Lester"
+date: "11/16/2020"
+output: pdf_document
+---
+
+# Part 1: Visualizing Convergence in Probability
+
+Suppose we have a random sample drawn from an exponential distribution. I will first begin with by showing that the minimum order statistic from this random sample converges in probability to 0.
+
+```{=latex}
+Let $Y_1$, $Y_2$, $\ldots$, $Y_n$ be independent and identically distributed Random Variables such that any $Y_i = Y \overset{iid}{\sim} Exp(\lambda = 1)$. Let $Y_{(1)}$ be the minimum order statistic of this sample.
+
+First, we find the CDF of the minimum order statistic $Y_{(1)}$ as follows:
+\begin{align}
+F_{Y_{(1)}}(y) &= Pr(Y_1 \leq y, Y_2 \leq y, \ldots, Y_n \leq y) \\
+              &= 1 - Pr(Y_1 > y, Y_2 > y, \ldots, Y_n > y)  \\
+              &= 1 - Pr(Y_1 > y) \cdot Pr(Y_2 > y) \cdots Pr(Y_n > y) \\
+              &= 1 - \prod_{i = 1}^{n} Pr(Y > y) \\
+              &= 1 - (1 - Pr(Y \leq y))^{n} \\
+              &= 1 - (1 - F_{Y}(y))^{n}
+\end{align}
+
+(3) is true due to the independence of the $Y_i$'s and (4) is true due to the fact that the $Y_i$'s are identically distributed to $Y$, as given above. Substituting in the CDF for $Y$, an exponentially-distributed random variable with rate parameter $\lambda = 1$ gives us:
+
+\begin{align}
+F_{Y_{(1)}}(y) &= 1 - (1 - F_{Y}(y))^{n} \\
+  &= 1 - (1 - (1 - e^{- \lambda y}))^{n} \\
+  &= 1 - e^{- \lambda yn}
+\end{align}
+
+To show that the minimum order statistic $Y_{(1)}$ converges in probability to the constant zero, we must show that
+
+\begin{align}
+\lim_{n \to \infty} & Pr\left(\left| Y_{(1)} - 0 \right| < \epsilon\right) = 1 \\
+\lim_{n \to \infty} & Pr\left(Y_{(1)} < \epsilon \right) = 1 \\
+\lim_{n \to \infty} & F_{Y_{(1)}}(\epsilon) = 1 \\
+\lim_{n \to \infty} & 1 - e^{- \lambda yn} = 1 
+\end{align}
+
+Since the limit in (13) converges to 1, we have shown that the minimum order statistic $Y_{(1)}$ converges in probability to zero $\forall\epsilon > 0$ as $n \to \infty$.
+```
+
+## Simulation Exercise 1
+
+In order to visualize this result, we will simulate sample data in order to approximate the above statement (10).
+
+```{r visualize_1, echo=TRUE, message=FALSE, warning=FALSE, class.source="bg-warning", cache=TRUE}
+knitr::opts_chunk$set(fig.width = 6, 
+                      fig.asp = 5/7,
+                      out.width = "80%",
+                      fig.align = "center")
+library(tidyverse)
+library(extrafont)
+
+# Download TTF file for default LaTeX font (Latin Modern Roman) at:
+# https://www.fontsquirrel.com/fonts/latin-modern-roman
+
+# Run only once to import all system fonts - takes a few minutes.
+#font_import()
+
+# Load windows fonts imported
+#loadfonts(device="win")
+
+# Allow replication of results
+set.seed(12345)
+
+# Set rate parameter
+lambda <- 1
+
+# Set arbitrary threshold value epsilon
+.05 -> epsilon
+
+# Build samples: with N = 1000 datasets and each dataset consisting of n = 1 
+# observations from Y ~ Exp(1)
+
+# This takes a few moments to generate all 50,000 datasets.
+
+samples <- tibble(dataset_ID = seq(1, 1000, 1)) %>% 
+  expand(dataset_ID, num_samples = seq(1,50,1)) %>% 
+  mutate(sample = map(num_samples, ~tibble(values=rexp(n = .x, rate = lambda))),
+         min = as.numeric(map(sample, function(x) min(x$values))),
+         prob_epsilon = min <= epsilon)
+
+# Determine F_Y_N(.05) for each value of little n
+plot_data <- samples %>% 
+  group_by(num_samples) %>% 
+  summarize(prob = sum(as.numeric(prob_epsilon)) / n()) %>% 
+  ungroup()
+
+# Plot
+plot_data %>% 
+  ggplot(aes(x = num_samples, y = prob)) + 
+  geom_point(alpha = 0.8, color="darkorange") + 
+  geom_hline(yintercept = 1, color="red", linetype="dashed") + 
+  labs(title="Convergence in Probability of Minimum Order Statistic",
+       subtitle="Minimums Sampled from 1,000 datasets of iid samples",
+       x = "Size of Sample",
+       y = paste0("Probability that Minimum Order Statistic < ", epsilon)) +
+  scale_y_continuous(labels=scales::percent, breaks = seq(0,1,.1)) + 
+  theme(text = element_text(size=10, family="LM Roman 10"))
+
+```
+From the above plot, we see that for our arbitrarily set value of $\epsilon = 0.05$, as the sample size $n$ takes on larger values, the probability that the minimum order statistic $Y_{(1)}$ converges on the constant value of zero becomes increasingly large - and as $n \to \infty$, this probability converges on 1.
+
+## Simulation Exercise 2
+The following code was used to build out a histogram showing the "tightening" of the distribution of minimums sampled as the number of observations in the samples increases.
+
+```{r visualize_2, echo=TRUE, message=FALSE, warning=FALSE, class.source="bg-warning", cache=TRUE}
+knitr::opts_chunk$set(fig.width = 6, 
+                      fig.asp = 5/7,
+                      out.width = "90%",
+                      fig.align = "center")
+
+histogram_data <- samples %>% 
+  filter(num_samples %in% c(1,5,10,25,50)) %>% 
+  select(-sample, -prob_epsilon) %>% 
+  mutate(sample_num_bucket = paste0("n = ", num_samples))
+
+histogram_data %>% 
+  ggplot(aes(x = min)) + 
+  geom_histogram(aes(fill=..count..), bins = 100) +
+  facet_grid(facets = as_factor(sample_num_bucket) ~ .) + 
+  theme(legend.position = "none",
+        strip.background = element_rect(color="black", fill="lightblue",
+                                        linetype="solid"),
+        panel.border = element_rect(color="black", linetype="solid", fill=NA),
+        text = element_text(size=10, family="LM Roman 10")) +
+  scale_x_continuous(limits=c(-.15,3.5)) +
+  labs(title="Distribution of Minimum Order Statistic of Samples",
+       subtitle="For Select Sample Sizes n = 1, 5, 10, 25, 50",
+       x = "Value of Minimum Order Statistic",
+       y = "Number of Datasets",
+       caption = "Some values removed in n=1 histogram")
+
+
+```
+
+From this plot, we have plotted the 1,000 minimum values of select sample sizes n = 1, 5, 10, 25, and 50. This shows us that the effect sampling larger and larger quantities increases the total probability mass that is below some arbitrary $\epsilon$, such that as $n \to \infty$ the distribution of the minimum order statistic becomes a degenerate distribution with its entire probability mass concentrated at zero.
+
+# Part 2: Visualizing Convergence in Distribution
+
+Next we will build 50,000 datasets, with each dataset containing $n$ samples and sampled from a Poisson distribution with rate parameter $\lambda$, for all unique cartesian product pairs of $n \in \{5, 10, 30, 100\}$ and $\lambda \in \{1, 5, 25\}$, for a total of 50,000 $\times$ 4 $\times$ 3 $=$ 600,000 datasets.
+
+```{r sample_clt, echo=TRUE, message=FALSE, warning=FALSE, class.source="bg-warning", cache=TRUE}
+knitr::opts_chunk$set(fig.width = 6, 
+                      fig.asp = 5/7,
+                      out.width = "90%",
+                      fig.align = "center")
+
+# Create sample "matrix" (not using matrix functions, at a speed cost but the
+# tidyverse sure is easy to use!)
+
+# Allow replication of results
+set.seed(8675309)
+
+samples2 <- tibble(dataset_ID = seq(1, 50000, 1)) %>% 
+  expand(dataset_ID, num_samples = c(5, 10, 30, 100), 
+         lambda = c(1.0, 5.0, 25.0)) %>% 
+  mutate(sample = map2(num_samples, lambda, 
+                       ~tibble(values=rpois(n = .x, lambda = .y))),
+         mean = as.numeric(map(sample, ~ mean(.x$values))))
+
+```
+
+## Simulation Exercise 3
+
+Plotting these datasets via histogram allows us to watch in "slow-motion" as the distribution of 50,000 sample means drawn from each "bucket" of datasets converges on a Normal distribution with $\mu = \lambda$ and $\sigma^2 = \frac{\lambda}{n}$.
+
+```{r histo_grid, echo=TRUE, message=FALSE, warning=FALSE, class.source="bg-warning", cache=TRUE}
+knitr::opts_chunk$set(fig.width = 5, 
+                      fig.asp = 5/7,
+                      out.height = "75%",
+                      fig.align = "center")
+
+samples2_plots <- samples2 %>% 
+  mutate(label = paste0("lambda = ", lambda, ", n = ", num_samples),
+         bin_width = 1/num_samples) %>% 
+  arrange(lambda, num_samples) %>% 
+  mutate(label = as_factor(label),
+         stdd = sqrt(as.numeric(lambda / num_samples)),
+         params = map2(lambda, stdd, ~list(mean=.x, sd = .y))) %>% 
+  select(lambda, num_samples, label, bin_width, mean, params) %>% 
+  nest(means = c(mean)) %>% 
+  mutate(plot = 
+           pmap(
+             list(means, bin_width, label, params), 
+             ~ggplot(data=..1, aes(x = mean)) +
+               geom_histogram(aes(fill = desc(..density..), y = ..density..), 
+                              binwidth = ..2, color="black", size=.005) +
+               scale_fill_viridis_c() +
+               geom_vline(xintercept = mean(..1$mean), 
+                          color="sienna3", linetype="dashed") +
+               stat_function(fun = dnorm, args = ..4, color="sienna3", size=1.5,
+                             alpha=0.7) +
+               theme(legend.position = "none",
+                     panel.border = element_rect(color="black", 
+                                                 linetype="solid", fill=NA),
+                     text = element_text(size=10, family="LM Roman 10")) +
+               labs(title="Distribution of Sample Mean of 50,000 iid Poisson samples",
+                    subtitle=paste0("For Random Sample ", ..3),
+                    x = "Sample Mean",
+                    y = "Density",
+                    caption = paste0("Bin width = ", sprintf("%.2f", ..2),
+                                     ", Mean of means = ", sprintf("%.2f", mean(..1$mean)),
+                                     ", Sample SD of means = ", sprintf("%.2f", sd(..1$mean))))))
+                                     
+samples2_plots$plot
+
+```
+
+## Approximating Probabilities
+
+Finally, in each of our dataset "buckets" we will observe some value $p$ which we define as $Pr\left(\bar{X} \geq \lambda + \frac{2}{\sqrt{n}} \lambda \right)$. To make the table easier to read, we'll use $k$ as shorthand for $\lambda + \frac{2}{\sqrt{n}} \lambda$.
+
+The large-sample approximation works for larger values of lambda because Poisson samples will always be positive, so it is easier for the sample of dataset means to converge on a nice, symmetric Normal distribution when the mean is sufficiently far from zero such that three standard deviations to the left are far, far away from the negative portion of the number line.
+
+```{r sample_probs, echo=TRUE, message=FALSE, warning=FALSE, class.source="bg-warning", cache=TRUE}
+knitr::opts_chunk$set(fig.width = 6, 
+                      fig.asp = 5/7,
+                      out.width = "90%",
+                      fig.align = "center")
+
+options(knitr.table.format = "latex")
+
+library(kableExtra)
+
+prob_table <- samples2_plots %>% 
+  select(label, lambda, num_samples, means) %>% 
+  mutate(k = lambda + 2*lambda/sqrt(num_samples),
+         p_approx = pmap(list(means, k, num_samples),
+                         function(x, y, z) {
+                           out <- x %>% 
+                             summarize(test = sum(as.numeric(mean >= y)))
+                           out$test / 50000
+                         }
+                        ),
+         p_norm = 1-pnorm(k, mean=lambda, sd=sqrt(lambda/num_samples))) %>% 
+  select(label, k, p_approx, p_norm) %>% 
+  select("Dataset" = label,
+         "k" = k,
+         "Approx. Prob." = p_approx,
+         "Normal Prob." = p_norm)
+
+kable(prob_table, "latex", booktabs=T) %>% 
+  kable_styling(latex_options = c("scale_down"))
+  
+```
